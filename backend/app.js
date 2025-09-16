@@ -66,23 +66,30 @@ app.use((req, res) => {
 // Global error handling middleware (must be last)
 app.use(errorHandler);
 
-// Connect to MongoDB with timeout handling
-mongoose.connect(process.env.MONGODB_URI, {
-  serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
-  socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
-  maxPoolSize: 10, // Maintain up to 10 socket connections
-  bufferCommands: false, // Disable mongoose buffering
-})
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => {
+// Connect to MongoDB and start server
+async function startServer() {
+  try {
+    // Connect to MongoDB with timeout handling
+    await mongoose.connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+      socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+      maxPoolSize: 10, // Maintain up to 10 socket connections
+      bufferCommands: false, // Disable mongoose buffering
+    });
+
+    console.log('MongoDB connected');
+
+    const PORT = process.env.PORT || 3000;
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  } catch (err) {
     console.log('MongoDB connection error:', err);
     process.exit(1); // Exit if can't connect to database
-  });
+  }
+}
 
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+// Start the server only after MongoDB connection is established
+startServer();
 
 export default app;
