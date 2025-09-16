@@ -10,6 +10,17 @@ dotenv.config();
 
 const app = express();
 
+// Set timeout for all requests (25 seconds to stay under Vercel's 30s limit)
+app.use((req, res, next) => {
+  req.setTimeout(25000, () => {
+    res.status(408).json({
+      success: false,
+      message: 'Request timeout'
+    });
+  });
+  next();
+});
+
 // Middleware
 app.use(cors({
   origin: ['https://qurinom-solutions-assignment.vercel.app'],
@@ -55,13 +66,21 @@ app.use((req, res) => {
 // Global error handling middleware (must be last)
 app.use(errorHandler);
 
-// Connect to MongoDB
+// Connect to MongoDB with timeout handling
 mongoose.connect(process.env.MONGODB_URI, {
   useNewUrlParser: true,
   useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000, // Timeout after 5s instead of 30s
+  socketTimeoutMS: 45000, // Close sockets after 45s of inactivity
+  maxPoolSize: 10, // Maintain up to 10 socket connections
+  bufferMaxEntries: 0, // Disable mongoose buffering
+  bufferCommands: false, // Disable mongoose buffering
 })
   .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log('MongoDB connection error:', err));
+  .catch(err => {
+    console.log('MongoDB connection error:', err);
+    process.exit(1); // Exit if can't connect to database
+  });
 
 const PORT = process.env.PORT || 3000;
 
