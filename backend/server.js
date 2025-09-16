@@ -12,7 +12,7 @@ const app = express();
 
 // Middleware
 app.use(cors({
-  origin: ['http://localhost:3001', 'http://localhost:3000'],
+  origin: ['https://qurinom-solutions-assignment.vercel.app'],
   credentials: true,
 }));
 app.use(cookieParser()); // Parse cookies
