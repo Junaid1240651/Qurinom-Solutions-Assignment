@@ -1,0 +1,46 @@
+/* Drag and Drop Styles */
+.drag-item {
+  cursor: grab;
+}
+
+.drag-item:active {
+  cursor: grabbing;
+}
+
+/* CRITICAL: Force correct positioning */
+[data-rbd-draggable-context-id] {
+  transform: none !important;
+  transition: none !important;
+  will-change: auto !important;
+}
+
+[data-rbd-drag-handle-context-id] {
+  transform: none !important;
+}
+
+/* Dragging card - minimal styling */
+.dragging-card {
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2) !important;
+  border: 2px solid #3b82f6 !important;
+  background-color: #ffffff !important;
+  opacity: 0.9 !important;
+  transform: none !important;
+  position: fixed !important;
+  pointer-events: none !important;
+  z-index: 9999 !important;
+}
+
+/* Override library positioning */
+[data-rbd-draggable-id][data-rbd-drag-handle-dragging-id] {
+  transform: none !important;
+}
+
+/* Remove any backdrop effects */
+* {
+  backdrop-filter: none !important;
+}
+
+/* Ensure cursor follows precisely */
+body[style*="cursor: grabbing"] * {
+  pointer-events: none !important;
+}
