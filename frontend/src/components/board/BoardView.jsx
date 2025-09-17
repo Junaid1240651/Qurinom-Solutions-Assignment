@@ -73,6 +73,7 @@ const BoardView = () => {
   const [selectedCard, setSelectedCard] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [showMemberModal, setShowMemberModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   const fetchedBoardId = useRef(null);
   const titleInputRef = useRef(null);
   const addListInputRef = useRef(null);
@@ -234,6 +235,51 @@ const BoardView = () => {
     const role = getCurrentUserRole();
     return role === 'owner' || role === 'admin' || role === 'editor';
   }, [getCurrentUserRole]);
+
+  // Search & filtering logic
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const isSearching = normalizedSearch.length > 0;
+
+  // Determine which lists match (by title or containing matching cards)
+  const filteredLists = useMemo(() => {
+    if (!isSearching) return lists;
+    if (!Array.isArray(lists)) return [];
+    return lists.filter(list => {
+      const listTitle = (list.title || '').toLowerCase();
+      if (listTitle.includes(normalizedSearch)) return true;
+      const listCards = list.cards || [];
+      return listCards.some(card => (card.title || '').toLowerCase().includes(normalizedSearch));
+    });
+  }, [lists, isSearching, normalizedSearch]);
+
+  // Helper to get cards to display for a list while searching
+  const getVisibleCardsForList = useCallback((list) => {
+    if (!isSearching) return (list.cards || [])
+      .slice()
+      .sort((a, b) => (a.position || 0) - (b.position || 0));
+
+    const listMatches = (list.title || '').toLowerCase().includes(normalizedSearch);
+    let cards = list.cards || [];
+    if (!listMatches) {
+      cards = cards.filter(card => (card.title || '').toLowerCase().includes(normalizedSearch));
+    }
+    return cards.slice().sort((a, b) => (a.position || 0) - (b.position || 0));
+  }, [isSearching, normalizedSearch]);
+
+  // Highlight matched text (simple single-match highlight)
+  const highlightText = useCallback((text) => {
+    if (!isSearching || !text) return text;
+    const lower = text.toLowerCase();
+    const idx = lower.indexOf(normalizedSearch);
+    if (idx === -1) return text;
+    return (
+      <>
+        {text.slice(0, idx)}
+        <span className="bg-yellow-200 text-accent-900 rounded px-0.5">{text.slice(idx, idx + normalizedSearch.length)}</span>
+        {text.slice(idx + normalizedSearch.length)}
+      </>
+    );
+  }, [isSearching, normalizedSearch]);
 
   // Card Modal handlers
   const handleCardClick = useCallback((card, listTitle) => {
@@ -782,6 +828,27 @@ const BoardView = () => {
 
             {/* Right Section */}
             <div className="flex items-center space-x-3">
+              {/* Search Input (desktop) */}
+              <div className="hidden md:block w-64">
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search lists & cards..."
+                    className="w-full pl-3 pr-8 py-2 text-sm rounded-lg bg-white bg-opacity-20 placeholder-white/70 text-white focus:outline-none focus:ring-2 focus:ring-white/40 focus:bg-opacity-30 transition"
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-sm"
+                      aria-label="Clear search"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
+              </div>
               {/* Other Board Members (non-clickable) */}
               <div className="flex items-center space-x-2">
                 {currentBoard.members?.slice(1, 3).map((member, index) => (
@@ -858,11 +925,11 @@ const BoardView = () => {
             </div>
           )}
 
-          {/* Lists Container with Drag & Drop */}
-          <DragDropContext onDragEnd={handleDragEnd}>
-            <div className="flex flex-wrap gap-4 pb-4">
+          {/* Lists Container with Drag & Drop (disabled while searching) */}
+          <DragDropContext onDragEnd={isSearching ? () => { } : handleDragEnd}>
+            <div className="flex flex-wrap gap-4 pb-4 justify-center">
               {/* Add List Section - Only for users who can create content */}
-              {canCreateContent() && (
+              {canCreateContent() && !isSearching && (
                 <div className="flex-shrink-0 w-72 min-w-[18rem] order-first">
                   {showAddList ? (
                     <div className="bg-white bg-opacity-95 rounded-xl p-4 shadow-lg border border-white border-opacity-20">
@@ -907,20 +974,21 @@ const BoardView = () => {
               )}
 
               {/* Draggable Lists Container */}
-              <Droppable droppableId="lists" type="list" direction="horizontal">
+              <Droppable droppableId="lists" type="list" direction="horizontal" isDropDisabled={isSearching}>
                 {(provided) => (
                   <div
                     {...provided.droppableProps}
                     ref={provided.innerRef}
                     className="flex flex-wrap gap-4"
                   >
-                    {/* Existing Lists */}
-                    {lists?.map((list, listIndex) => (
+                    {/* Existing Lists (filtered during search) */}
+                    {(isSearching ? filteredLists : lists)?.map((list, listIndex) => (
                       <Draggable
                         key={list.id || list._id}
                         draggableId={(list.id || list._id).toString()}
                         index={listIndex}
                         type="list"
+                        isDragDisabled={isSearching}
                       >
                         {(provided, snapshot) => (
                           <div
@@ -962,7 +1030,7 @@ const BoardView = () => {
                               ) : (
                                 <>
                                   <h3 className="font-semibold text-accent-900 truncate flex-1 min-w-0" title={list.title}>
-                                    {list.title}
+                                    {highlightText(list.title)}
                                   </h3>
                                   {canEditContent() && (
                                     <div className="relative list-menu-container flex-shrink-0">
@@ -1011,8 +1079,7 @@ const BoardView = () => {
                                     }`}
                                 >
                                   {list.cards && list.cards.length > 0 ?
-                                    [...list.cards]
-                                      .sort((a, b) => (a.position || 0) - (b.position || 0))
+                                    getVisibleCardsForList(list)
                                       .map((card, index) => {
                                         const cardId = card?.id || card?._id;
 
@@ -1068,7 +1135,7 @@ const BoardView = () => {
                                                   <div>
                                                     <div className="flex items-start justify-between mb-2">
                                                       <h4 className="font-medium text-accent-900 break-words flex-1" title={card.title}>
-                                                        {card.title}
+                                                        {highlightText(card.title)}
                                                       </h4>
                                                       {canEditContent() && (
                                                         <div className="relative card-menu-container flex-shrink-0 ml-2">
@@ -1166,7 +1233,7 @@ const BoardView = () => {
                             </Droppable>
 
                             {/* Add Card Button/Form - Only for users who can create content */}
-                            {canCreateContent() && showAddCard === (list.id || list._id) ? (
+                            {canCreateContent() && !isSearching && showAddCard === (list.id || list._id) ? (
                               <div className="space-y-2">
                                 <textarea
                                   ref={addCardInputRef}
@@ -1194,7 +1261,7 @@ const BoardView = () => {
                                   </button>
                                 </div>
                               </div>
-                            ) : canCreateContent() ? (
+                            ) : canCreateContent() && !isSearching ? (
                               <button
                                 onClick={() => handleShowAddCard(list.id || list._id)}
                                 className="w-full flex items-center gap-2 text-accent-600 hover:text-accent-900 hover:bg-accent-100 p-2 rounded-lg transition-colors text-sm"
@@ -1207,6 +1274,11 @@ const BoardView = () => {
                         )}
                       </Draggable>
                     ))}
+                    {isSearching && (filteredLists?.length === 0) && (
+                      <div className="text-white/80 text-sm font-medium px-4 py-8">
+                        No lists or cards match "{searchQuery}".
+                      </div>
+                    )}
                     {provided.placeholder}
                   </div>
                 )}
