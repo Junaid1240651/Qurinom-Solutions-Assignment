@@ -20,7 +20,7 @@ import {
 import { showSuccess, showError } from '../../utils/toast';
 import { fetchBoardDetails, clearCurrentBoard, updateBoard } from '../../store/slices/boardSlice';
 import { createList, fetchListsByBoard, clearLists, updateList, deleteList, moveCardBetweenLists, reorderLists, reorderList } from '../../store/slices/listSlice';
-import { clearCards, updateCard, deleteCard, moveCard } from '../../store/slices/cardSlice';
+import { clearCards, updateCard, deleteCard, moveCard, createCard } from '../../store/slices/cardSlice';
 import { DeleteConfirmationModal } from '../common';
 import MemberManagementModal from './MemberManagementModal';
 import CardModal from './CardModal';
@@ -478,13 +478,20 @@ const BoardView = () => {
     if (!newCardTitle.trim() || !showAddCard) return;
 
     try {
+      const listId = showAddCard; // showAddCard holds the current list id
+      await dispatch(createCard({
+        title: newCardTitle.trim(),
+        list: listId,
+        board: boardId
+      })).unwrap();
+
       setNewCardTitle('');
       setShowAddCard(null);
       showSuccess('Card created successfully!');
     } catch (error) {
-      showError('Failed to create card');
+      showError(error || 'Failed to create card');
     }
-  }, [newCardTitle, showAddCard]);
+  }, [dispatch, newCardTitle, showAddCard, boardId]);
 
   const handleAddCardKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
