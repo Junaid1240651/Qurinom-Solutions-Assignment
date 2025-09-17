@@ -18,6 +18,31 @@ code {
     monospace;
 }
 
+/* Custom scrollbar utility for modals */
+.custom-scrollbar {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: transparent transparent; /* Firefox */
+}
+.custom-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.15);
+  border-radius: 3px;
+  transition: background-color 0.2s;
+}
+.custom-scrollbar:hover::-webkit-scrollbar-thumb {
+  background-color: rgba(0,0,0,0.3);
+}
+
+/* Hide scrollbar entirely on very short content */
+.custom-scrollbar:has(> :only-child)::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
 @keyframes spin {
   0% { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }

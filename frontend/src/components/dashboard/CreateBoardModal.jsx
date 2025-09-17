@@ -88,9 +88,9 @@ const CreateBoardModal = ({ onClose, onSubmit }) => {
       className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50"
       onClick={handleOverlayClick}
     >
-      <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+      <div className="bg-white rounded-xl shadow-xl max-w-md w-full max-h-[90vh] flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-accent-200">
+        <div className="flex items-center justify-between p-6 border-b border-accent-200 flex-shrink-0">
           <h2 className="text-xl font-semibold text-accent-900">Create Board</h2>
           <button
             onClick={onClose}
@@ -101,7 +101,7 @@ const CreateBoardModal = ({ onClose, onSubmit }) => {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="p-6 space-y-6 overflow-y-auto custom-scrollbar flex-1">
           {/* Board Preview */}
           <div className="space-y-3">
             <label className="block text-sm font-medium text-accent-700">
@@ -239,7 +239,7 @@ const CreateBoardModal = ({ onClose, onSubmit }) => {
           </div>
 
           {/* Actions */}
-          <div className="flex space-x-3 pt-4">
+          <div className="flex space-x-3 pt-4 pb-2">
             <button
               type="button"
               onClick={onClose}
