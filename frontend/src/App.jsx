@@ -11,7 +11,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './components/dashboard/Dashboard';
-import BoardView from './components/board/BoardView.jsx';
+import BoardView from './components/board/BoardView';
 
 // App Routes Component
 const AppRoutes = () => {
@@ -111,7 +111,7 @@ const App = () => {
           success: {
             duration: 3000,
             style: {
-              background: '#3df26d',
+              background: '#0e9c50',
               color: '#fff',
             },
           },
