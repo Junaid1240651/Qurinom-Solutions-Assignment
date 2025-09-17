@@ -20,16 +20,31 @@ const checkBoardAccess = (board, userId) => {
   return isOwner || isMember;
 };
 
-// Helper function to check admin access
-const checkAdminAccess = (board, userId) => {
+// Helper function to get user role
+const getUserRole = (board, userId) => {
   const ownerId = board.owner._id ? board.owner._id.toString() : board.owner.toString();
   const isOwner = ownerId === userId.toString();
+  
+  if (isOwner) return 'owner';
+  
   const member = board.members.find(m => {
     const memberId = m.user._id ? m.user._id.toString() : m.user.toString();
     return memberId === userId.toString();
   });
-  const isAdmin = member && member.role === 'admin';
-  return isOwner || isAdmin;
+  
+  return member ? member.role : null;
+};
+
+// Helper function to check admin access (owner or admin)
+const checkAdminAccess = (board, userId) => {
+  const role = getUserRole(board, userId);
+  return role === 'owner' || role === 'admin';
+};
+
+// Helper function to check content creation/editing access (owner, admin, or editor)
+const checkContentAccess = (board, userId) => {
+  const role = getUserRole(board, userId);
+  return role === 'owner' || role === 'admin' || role === 'editor';
 };
 
 const getAllBoards = asyncHandler(async (req, res) => {
@@ -115,7 +130,7 @@ const updateBoard = asyncHandler(async (req, res) => {
 
   // Check if user is owner or admin
   if (!checkAdminAccess(board, req.user.id)) {
-    return sendForbiddenError(res, 'Access denied');
+    return sendForbiddenError(res, 'Only board owners and admins can edit board details');
   }
 
   const updatedBoard = await Board.findByIdAndUpdate(

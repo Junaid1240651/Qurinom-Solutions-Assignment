@@ -7,6 +7,7 @@ import {
   updateCard,
   moveCard,
   deleteCard,
+  getComments,
   addCommentToCard
 } from '../controllers/cardController.js';
 import {
@@ -33,6 +34,16 @@ router.get('/search', auth, searchCards);
 // @access  Private
 router.post('/', auth, createCardValidation, createCard);
 
+// @route   GET /api/cards/:id/comments
+// @desc    Get comments for card
+// @access  Private
+router.get('/:id/comments', auth, getComments);
+
+// @route   POST /api/cards/:id/comments
+// @desc    Add comment to card
+// @access  Private
+router.post('/:id/comments', auth, addCommentValidation, addCommentToCard);
+
 // @route   PUT /api/cards/:id
 // @desc    Update card
 // @access  Private
@@ -47,10 +58,5 @@ router.put('/:id/move', auth, moveCardValidation, moveCard);
 // @desc    Delete card
 // @access  Private
 router.delete('/:id', auth, deleteCard);
-
-// @route   POST /api/cards/:id/comments
-// @desc    Add comment to card
-// @access  Private
-router.post('/:id/comments', auth, addCommentValidation, addCommentToCard);
 
 export default router;

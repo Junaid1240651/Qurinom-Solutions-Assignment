@@ -3,7 +3,6 @@ import Card from '../models/Card.js';
 import List from '../models/List.js';
 import Board from '../models/Board.js';
 import Comment from '../models/Comment.js';
-import Activity from '../models/Activity.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendForbiddenError } from '../utils/response.js';
 
@@ -11,6 +10,33 @@ import { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendFor
 const checkBoardAccess = (board, userId) => {
   return board.owner.toString() === userId ||
     board.members.some(member => member.user.toString() === userId);
+};
+
+// Helper function to get user role
+const getUserRole = (board, userId) => {
+  const ownerId = board.owner._id ? board.owner._id.toString() : board.owner.toString();
+  const isOwner = ownerId === userId.toString();
+  
+  if (isOwner) return 'owner';
+  
+  const member = board.members.find(m => {
+    const memberId = m.user._id ? m.user._id.toString() : m.user.toString();
+    return memberId === userId.toString();
+  });
+  
+  return member ? member.role : null;
+};
+
+// Helper function to check admin access (owner or admin)
+const checkAdminAccess = (board, userId) => {
+  const role = getUserRole(board, userId);
+  return role === 'owner' || role === 'admin';
+};
+
+// Helper function to check content creation/editing access (owner, admin, or editor)
+const checkContentAccess = (board, userId) => {
+  const role = getUserRole(board, userId);
+  return role === 'owner' || role === 'admin' || role === 'editor';
 };
 
 const getCardsByList = asyncHandler(async (req, res) => {
@@ -105,6 +131,11 @@ const createCard = asyncHandler(async (req, res) => {
     return sendForbiddenError(res, 'Access denied');
   }
 
+  // Check if user can create content (owner, admin, or editor)
+  if (!checkContentAccess(board, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can create cards');
+  }
+
   // Get the highest position
   const lastCard = await Card.findOne({ list }).sort({ position: -1 });
   const position = lastCard ? lastCard.position + 1 : 0;
@@ -123,13 +154,6 @@ const createCard = asyncHandler(async (req, res) => {
   listDoc.cards.push(card._id);
   await listDoc.save();
 
-  // Create activity
-  await Activity.create({
-    type: 'card_created',
-    description: `Created card "${title}"`,
-    card: card._id,
-    user: req.user.id
-  });
 
   // Populate the card with the same structure as when fetching lists
   await card.populate([
@@ -159,6 +183,11 @@ const updateCard = asyncHandler(async (req, res) => {
     return sendForbiddenError(res, 'Access denied');
   }
 
+  // Check if user can edit content (owner, admin, or editor)
+  if (!checkContentAccess(board, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can edit cards');
+  }
+
   const oldTitle = card.title;
   const updatedCard = await Card.findByIdAndUpdate(
     req.params.id,
@@ -166,15 +195,6 @@ const updateCard = asyncHandler(async (req, res) => {
     { new: true, runValidators: true }
   );
 
-  // Create activity if title changed
-  if (oldTitle !== updatedCard.title) {
-    await Activity.create({
-      type: 'card_updated',
-      description: `Renamed card from "${oldTitle}" to "${updatedCard.title}"`,
-      card: updatedCard._id,
-      user: req.user.id
-    });
-  }
 
   await updatedCard.populate('members', 'name email avatar');
 
@@ -209,6 +229,11 @@ const moveCard = asyncHandler(async (req, res) => {
     return sendForbiddenError(res, 'Access denied');
   }
 
+  // Check if user can edit content on both boards (owner, admin, or editor)
+  if (!checkContentAccess(card.board, req.user.id) || !checkContentAccess(newList.board, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can move cards');
+  }
+
   const oldListId = card.list;
   const oldPosition = card.position;
 
@@ -238,17 +263,6 @@ const moveCard = asyncHandler(async (req, res) => {
   newList.cards.push(card._id);
   await newList.save();
 
-  // Create activity
-  await Activity.create({
-    type: 'card_moved',
-    description: `Moved card "${card.title}" from "${oldList.title}" to "${newList.title}"`,
-    card: card._id,
-    user: req.user.id,
-    metadata: {
-      fromList: oldList.title,
-      toList: newList.title
-    }
-  });
 
   await card.populate('members', 'name email avatar');
 
@@ -269,9 +283,13 @@ const deleteCard = asyncHandler(async (req, res) => {
     return sendForbiddenError(res, 'Access denied');
   }
 
-  // Delete comments and activities
+  // Check if user can edit content (owner, admin, or editor)
+  if (!checkContentAccess(board, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can delete cards');
+  }
+
+  // Delete comments
   await Comment.deleteMany({ card: req.params.id });
-  await Activity.deleteMany({ card: req.params.id });
 
   // Remove card from list
   const list = await List.findById(card.list);
@@ -287,6 +305,33 @@ const deleteCard = asyncHandler(async (req, res) => {
   await Card.findByIdAndDelete(req.params.id);
 
   return sendSuccess(res, 200, 'Card deleted successfully');
+});
+
+const getComments = asyncHandler(async (req, res) => {
+  const card = await Card.findById(req.params.id)
+    .populate('board')
+    .populate({
+      path: 'comments',
+      populate: {
+        path: 'author',
+        select: 'name username email'
+      }
+    });
+
+  if (!card) {
+    return sendNotFoundError(res, 'Card not found');
+  }
+
+  // Check if user has access to this board
+  const userRole = getUserRole(card.board, req.user.id);
+  if (!userRole) {
+    return sendUnauthorizedError(res, 'Access denied to this board');
+  }
+
+  // Sort comments by creation date (newest first)
+  const comments = card.comments.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+  return sendSuccess(res, 200, 'Comments retrieved successfully', { comments });
 });
 
 const addCommentToCard = asyncHandler(async (req, res) => {
@@ -320,13 +365,6 @@ const addCommentToCard = asyncHandler(async (req, res) => {
   card.comments.push(comment._id);
   await card.save();
 
-  // Create activity
-  await Activity.create({
-    type: 'comment_added',
-    description: `Added a comment to "${card.title}"`,
-    card: card._id,
-    user: req.user.id
-  });
 
   await comment.populate('author', 'name email avatar');
 
@@ -340,5 +378,6 @@ export {
   updateCard,
   moveCard,
   deleteCard,
+  getComments,
   addCommentToCard
 };

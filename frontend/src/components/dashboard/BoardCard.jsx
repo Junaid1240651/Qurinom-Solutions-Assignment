@@ -16,7 +16,6 @@ import { formatDistanceToNow } from 'date-fns';
 const BoardCard = ({ board, onClick, onDelete, onEdit, onStar, onShare, onCopy, viewMode = 'grid', compact = false }) => {
   const [showMenu, setShowMenu] = useState(false);
   const [isStarred, setIsStarred] = useState(board.isStarred || false);
-  const menuRef = useRef(null);
   const cardRef = useRef(null);
 
   // Sync local state with board prop when it changes
@@ -195,7 +194,7 @@ const BoardCard = ({ board, onClick, onDelete, onEdit, onStar, onShare, onCopy, 
                     <Share className="h-4 w-4" />
                     <span>Share</span>
                   </button>
-                  <button 
+                  <button
                     onClick={handleEditClick}
                     className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2 transition-colors"
                   >
@@ -225,120 +224,121 @@ const BoardCard = ({ board, onClick, onDelete, onEdit, onStar, onShare, onCopy, 
     );
   }
 
-  // Grid view
+  // Grid view - matching stats card styling
   return (
     <div
       ref={cardRef}
       onClick={handleCardClick}
-      className={`group relative bg-white rounded-xl shadow-sm border border-accent-200 hover:shadow-lg transition-all duration-200 cursor-pointer ${compact ? 'h-32' : 'h-40'
-        }`}
+      className="group relative bg-white rounded-xl shadow-sm border border-accent-100 hover:shadow-md transition-all duration-200 cursor-pointer p-6 pb-4"
     >
-      {/* Board Background Preview */}
-      <div
-        className={`w-full ${compact ? 'h-16' : 'h-20'} relative overflow rounded-t-xl`}
-        style={getBackgroundStyle()}
-      >
-        {/* Overlay for better text readability */}
-        <div className="absolute inset-0 bg-black bg-opacity-20" />
-
-        {/* Star Button */}
-        <button
-          onClick={handleStarClick}
-          className={`absolute top-2 right-2 p-1 rounded-md transition-all ${isStarred
-            ? 'text-yellow-400 bg-white bg-opacity-20'
-            : 'text-white opacity-0 group-hover:opacity-100 hover:bg-white hover:bg-opacity-20'
-            }`}
-        >
-          <Star className={`h-4 w-4 ${isStarred ? 'fill-current' : ''}`} />
-        </button>
-
-        {/* Menu Button */}
-        <div className="absolute top-2 left-2">
-          <button
-            onClick={handleMenuClick}
-            className="p-1 text-white opacity-0 group-hover:opacity-100 hover:bg-white hover:bg-opacity-20 rounded-md transition-all"
+      {/* Header with Menu */}
+      <div className="flex items-start justify-between mb-4">
+        <div className="flex items-center">
+          <div
+            className="p-2 bg-gray-100 rounded-lg mr-4 flex-shrink-0"
           >
-            <MoreHorizontal className="h-4 w-4" />
+            <div
+              className="w-6 h-6 rounded relative overflow-hidden"
+            >
+              <div
+                className="absolute inset-0 w-full h-1/2"
+                style={getBackgroundStyle()}
+              />
+              <div className="absolute bottom-0 w-full h-1/2 bg-white" />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-semibold text-accent-900 truncate text-sm">
+              {board.title}
+            </h3>
+            <p className="text-xs text-accent-600 mt-1">
+              {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
+            </p>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center space-x-1">
+          <button
+            onClick={handleStarClick}
+            className={`p-1 rounded-md transition-colors ${isStarred
+              ? 'text-yellow-500 hover:text-yellow-600'
+              : 'text-accent-400 hover:text-yellow-500'
+              }`}
+          >
+            <Star className={`h-4 w-4 ${isStarred ? 'fill-current' : ''}`} />
           </button>
 
-          {showMenu && (
-            <div className="absolute left-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-accent-200 py-2 z-50">
-              <button
-                onClick={handleShareClick}
-                className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2"
-              >
-                <Share className="h-4 w-4" />
-                <span>Share</span>
-              </button>
-              <button 
-                onClick={handleEditClick}
-                className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2 transition-colors"
-              >
-                <Edit className="h-4 w-4" />
-                <span>Edit</span>
-              </button>
-              <button
-                onClick={handleCopyClick}
-                className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2 transition-colors"
-              >
-                <Copy className="h-4 w-4" />
-                <span>Copy Link</span>
-              </button>
-              <button
-                onClick={handleDeleteClick}
-                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-              >
-                <Trash2 className="h-4 w-4" />
-                <span>Delete</span>
-              </button>
-            </div>
-          )}
+          <div className="relative">
+            <button
+              onClick={handleMenuClick}
+              className="p-1 text-accent-400 hover:text-accent-600 rounded-md transition-colors"
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </button>
+
+            {showMenu && (
+              <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-xl border border-accent-200 py-2 z-50">
+                <button
+                  onClick={handleShareClick}
+                  className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2"
+                >
+                  <Share className="h-4 w-4" />
+                  <span>Share</span>
+                </button>
+                <button
+                  onClick={handleEditClick}
+                  className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2 transition-colors"
+                >
+                  <Edit className="h-4 w-4" />
+                  <span>Edit</span>
+                </button>
+                <button
+                  onClick={handleCopyClick}
+                  className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2 transition-colors"
+                >
+                  <Copy className="h-4 w-4" />
+                  <span>Copy Link</span>
+                </button>
+                <button
+                  onClick={handleDeleteClick}
+                  className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  <span>Delete</span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Board Info */}
-      <div className="p-4">
-        <h3 className="font-semibold text-accent-900 truncate mb-1">
-          {board.title}
-        </h3>
-
-        {!compact && board.description && (
-          <p className="text-sm text-accent-600 line-clamp-2 mb-3">
-            {board.description}
-          </p>
-        )}
-
-        {/* Board Stats */}
-        <div className="flex items-center justify-between text-xs text-accent-500">
-          <div className="flex items-center space-x-3">
-            {listCount > 0 && (
-              <span className="flex items-center space-x-1">
-                <List className="h-3 w-3" />
-                <span>{listCount}</span>
-              </span>
-            )}
-            {cardCount > 0 && (
-              <span className="flex items-center space-x-1">
-                <CheckSquare className="h-3 w-3" />
-                <span>{cardCount}</span>
-              </span>
-            )}
+      {/* Stats Section - matching the dashboard stats cards */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-1 text-sm text-accent-600">
+              <List className="h-4 w-4" />
+              <span>{listCount}</span>
+            </div>
+            <div className="flex items-center space-x-1 text-sm text-accent-600">
+              <CheckSquare className="h-4 w-4" />
+              <span>{cardCount}</span>
+            </div>
           </div>
-
-          {/* Members */}
           {memberCount > 1 && (
-            <div className="flex items-center space-x-1">
-              <Users className="h-3 w-3" />
+            <div className="flex items-center space-x-1 text-sm text-accent-600">
+              <Users className="h-4 w-4" />
               <span>{memberCount}</span>
             </div>
           )}
         </div>
 
-        {/* Last Updated */}
-        {!compact && (
-          <div className="mt-2 text-xs text-accent-400">
-            Updated {formatDistanceToNow(new Date(board.updatedAt), { addSuffix: true })}
-          </div>
+        {/* Description if available and not compact */}
+        {!compact && board.description && (
+          <p className="text-xs text-accent-500 line-clamp-2">
+            {board.description}
+          </p>
         )}
       </div>
     </div>

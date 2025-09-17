@@ -70,10 +70,6 @@ const cardSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Comment'
   }],
-  activities: [{
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Activity'
-  }],
   isArchived: {
     type: Boolean,
     default: false

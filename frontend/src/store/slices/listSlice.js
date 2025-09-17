@@ -103,22 +103,9 @@ const listSlice = createSlice({
     clearLists: (state) => {
       state.lists = [];
     },
-    // Add a reducer to handle card creation from outside
-    addCardToList: (state, action) => {
-      const { listId, card } = action.payload;
-      const listIndex = state.lists.findIndex(list => 
-        (list.id || list._id) === listId
-      );
-      if (listIndex !== -1) {
-        if (!state.lists[listIndex].cards) {
-          state.lists[listIndex].cards = [];
-        }
-        state.lists[listIndex].cards.push(card);
-      }
-    },
     // Optimistic update for card movement within lists
     moveCardBetweenLists: (state, action) => {
-      const { cardId, sourceListId, destinationListId, sourceIndex, destinationIndex } = action.payload;
+      const { cardId, sourceListId, destinationListId, destinationIndex } = action.payload;
       
       // Find source and destination lists
       const sourceListIndex = state.lists.findIndex(list => 
@@ -236,15 +223,8 @@ const listSlice = createSlice({
       })
       // Reorder list
       .addCase(reorderList.fulfilled, (state, action) => {
-        const { listId, position } = action.payload;
-        const list = state.lists.find(list => 
-          (list.id || list._id) === listId
-        );
-        if (list) {
-          list.position = position;
-        }
-        // Re-sort lists by position
-        state.lists.sort((a, b) => a.position - b.position);
+        // Don't update state here - let the refetch handle it
+        // The backend has updated multiple list positions, so we need fresh data
       })
       // Handle card creation (from cardSlice) - using proper action reference
       .addCase(createCard.fulfilled, (state, action) => {
@@ -276,5 +256,5 @@ const listSlice = createSlice({
   },
 });
 
-export const { clearError, clearLists, addCardToList, moveCardBetweenLists, reorderLists } = listSlice.actions;
+export const { clearError, clearLists, moveCardBetweenLists, reorderLists } = listSlice.actions;
 export default listSlice.reducer;

@@ -10,10 +10,8 @@ import {
   Star,
   Clock,
   Users,
-  Settings,
-  LogOut,
-  MoreHorizontal
 } from 'lucide-react';
+import { showSuccess, showError } from '../../utils/toast';
 import {
   fetchBoards,
   createBoard,
@@ -63,8 +61,9 @@ const Dashboard = () => {
     try {
       await dispatch(createBoard(boardData)).unwrap();
       setShowCreateModal(false);
+      showSuccess('Board created successfully!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to create board');
     }
   };
 
@@ -80,8 +79,9 @@ const Dashboard = () => {
         await dispatch(deleteBoard(boardToDelete.id || boardToDelete._id)).unwrap();
         setShowDeleteModal(false);
         setBoardToDelete(null);
+        showSuccess('Board deleted successfully!');
       } catch (error) {
-        alert('Failed to delete board. Please try again.');
+        showError('Failed to delete board');
       }
     }
   };
@@ -106,7 +106,9 @@ const Dashboard = () => {
         })).unwrap();
         setShowEditModal(false);
         setBoardToEdit(null);
+        showSuccess('Board updated successfully!');
       } catch (error) {
+        showError('Failed to update board');
         throw error; // Re-throw to let the modal handle the error
       }
     }
@@ -143,8 +145,9 @@ const Dashboard = () => {
   const handleStarBoard = async (boardId, isStarred) => {
     try {
       await dispatch(toggleBoardStar({ boardId, isStarred })).unwrap();
+      showSuccess(isStarred ? 'Board starred!' : 'Board unstarred!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to update board star status');
     }
   };
 
@@ -171,7 +174,7 @@ const Dashboard = () => {
   const copyToClipboard = async (text) => {
     try {
       await navigator.clipboard.writeText(text);
-      alert('Board link copied to clipboard!');
+      showSuccess('Board link copied to clipboard!');
     } catch (error) {
       // Fallback for older browsers
       const textArea = document.createElement('textarea');
@@ -180,7 +183,7 @@ const Dashboard = () => {
       textArea.select();
       document.execCommand('copy');
       document.body.removeChild(textArea);
-      alert('Board link copied to clipboard!');
+      showSuccess('Board link copied to clipboard!');
     }
   };
 

@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, User, UserPlus } from 'lucide-react';
 import { registerUser, clearError, resetAuthState } from '../../store/slices/authSlice';
+import { showSuccess, showError } from '../../utils/toast';
 
 const schema = yup.object({
   name: yup.string().required('Name is required'),
@@ -63,8 +64,11 @@ const RegisterForm = () => {
     const result = await dispatch(registerUser(userData));
     
     if (registerUser.fulfilled.match(result)) {
+      showSuccess('Registration successful! Welcome to TaskManager!');
       const from = location.state?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
+    } else {
+      showError(result.payload || 'Registration failed. Please try again.');
     }
   };
 

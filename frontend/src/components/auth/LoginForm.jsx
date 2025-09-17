@@ -6,6 +6,7 @@ import { useDispatch, useSelector } from 'react-redux';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Eye, EyeOff, Mail, Lock, LogIn } from 'lucide-react';
 import { loginUser, clearError, resetAuthState } from '../../store/slices/authSlice';
+import { showSuccess, showError } from '../../utils/toast';
 
 const schema = yup.object({
   email: yup.string().email('Invalid email').required('Email is required'),
@@ -33,8 +34,11 @@ const LoginForm = () => {
     const result = await dispatch(loginUser(data));
 
     if (loginUser.fulfilled.match(result)) {
+      showSuccess('Login successful! Welcome back!');
       const from = location.state?.from?.pathname || '/dashboard';
       navigate(from, { replace: true });
+    } else {
+      showError(result.payload || 'Login failed. Please try again.');
     }
   };
 

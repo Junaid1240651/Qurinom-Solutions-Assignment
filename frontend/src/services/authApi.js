@@ -165,6 +165,12 @@ export const cardApi = {
   addComment: async (cardId, commentData) => {
     const response = await api.post(`/cards/${cardId}/comments`, commentData);
     return response.data;
+  },
+
+  // Get comments for card
+  getComments: async (cardId) => {
+    const response = await api.get(`/cards/${cardId}/comments`);
+    return response.data;
   }
 };
 
@@ -189,22 +195,4 @@ export const userApi = {
     const response = await api.put('/users/profile', profileData);
     return response.data;
   },
-
-  // Get user stats
-  getUserStats: async () => {
-    const response = await api.get('/users/stats');
-    return response.data;
-  },
-
-  // Update user preferences
-  updatePreferences: async (preferences) => {
-    const response = await api.put('/users/preferences', preferences);
-    return response.data;
-  },
-
-  // Delete user account
-  deleteAccount: async () => {
-    const response = await api.delete('/users/account');
-    return response.data;
-  }
 };

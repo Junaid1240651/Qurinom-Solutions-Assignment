@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk } from '@reduxjs/toolkit';
 import { cardApi } from '../../services/authApi';
+import { addComment } from './commentSlice';
 
 // Async thunks
 export const fetchCardsByList = createAsyncThunk(
@@ -116,32 +117,6 @@ const cardSlice = createSlice({
     clearError: (state) => {
       state.error = null;
     },
-    // Optimistic update for card movement
-    moveCardOptimistic: (state, action) => {
-      const { cardId, sourceListId, destinationListId, sourceIndex, destinationIndex } = action.payload;
-      
-      // Find the card in the source list
-      const sourceList = state.cards[sourceListId] || [];
-      const cardIndex = sourceList.findIndex(card => (card.id || card._id) === cardId);
-      
-      if (cardIndex === -1) return; // Card not found
-      
-      const card = sourceList[cardIndex];
-      
-      // Remove card from source list
-      state.cards[sourceListId] = sourceList.filter((_, index) => index !== cardIndex);
-      
-      // Add card to destination list at the correct position
-      if (!state.cards[destinationListId]) {
-        state.cards[destinationListId] = [];
-      }
-      
-      // Update card's list reference
-      const updatedCard = { ...card, list: destinationListId };
-      
-      // Insert at the correct position
-      state.cards[destinationListId].splice(destinationIndex, 0, updatedCard);
-    },
   },
   extraReducers: (builder) => {
     builder
@@ -253,9 +228,29 @@ const cardSlice = createSlice({
       .addCase(moveCard.rejected, (state, action) => {
         state.updating = false;
         state.error = action.payload;
+      })
+
+      // Listen for comment additions to update card comment count
+      .addCase(addComment.fulfilled, (state, action) => {
+        const { cardId, comment } = action.payload;
+        
+        // Find and update the card in any list
+        Object.keys(state.cards).forEach(listId => {
+          const cardIndex = state.cards[listId].findIndex(
+            card => (card.id || card._id) === cardId
+          );
+          
+          if (cardIndex !== -1) {
+            const card = state.cards[listId][cardIndex];
+            if (!card.comments) {
+              card.comments = [];
+            }
+            card.comments.push(comment);
+          }
+        });
       });
   },
 });
 
-export const { clearCards, clearError, moveCardOptimistic } = cardSlice.actions;
+export const { clearCards, clearError } = cardSlice.actions;
 export default cardSlice.reducer;

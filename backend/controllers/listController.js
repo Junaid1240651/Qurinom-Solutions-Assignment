@@ -8,7 +8,34 @@ import { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendFor
 // Helper function to check board access
 const checkBoardAccess = (board, userId) => {
   return board.owner.toString() === userId || 
-         board.members.some(member => member.user.toString() === userId);
+    board.members.some(member => member.user.toString() === userId);
+};
+
+// Helper function to get user role
+const getUserRole = (board, userId) => {
+  const ownerId = board.owner._id ? board.owner._id.toString() : board.owner.toString();
+  const isOwner = ownerId === userId.toString();
+  
+  if (isOwner) return 'owner';
+  
+  const member = board.members.find(m => {
+    const memberId = m.user._id ? m.user._id.toString() : m.user.toString();
+    return memberId === userId.toString();
+  });
+  
+  return member ? member.role : null;
+};
+
+// Helper function to check admin access (owner or admin)
+const checkAdminAccess = (board, userId) => {
+  const role = getUserRole(board, userId);
+  return role === 'owner' || role === 'admin';
+};
+
+// Helper function to check content creation/editing access (owner, admin, or editor)
+const checkContentAccess = (board, userId) => {
+  const role = getUserRole(board, userId);
+  return role === 'owner' || role === 'admin' || role === 'editor';
 };
 
 const getListsByBoard = asyncHandler(async (req, res) => {
@@ -56,6 +83,11 @@ const createList = asyncHandler(async (req, res) => {
     return sendForbiddenError(res, 'Access denied');
   }
 
+  // Check if user can create content (owner, admin, or editor)
+  if (!checkContentAccess(boardDoc, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can create lists');
+  }
+
   // Get the highest position
   const lastList = await List.findOne({ board }).sort({ position: -1 });
   const position = lastList ? lastList.position + 1 : 0;
@@ -92,6 +124,11 @@ const updateList = asyncHandler(async (req, res) => {
     return sendForbiddenError(res, 'Access denied');
   }
 
+  // Check if user can edit content (owner, admin, or editor)
+  if (!checkContentAccess(board, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can edit lists');
+  }
+
   const updatedList = await List.findByIdAndUpdate(
     req.params.id,
     req.body,
@@ -119,6 +156,11 @@ const reorderList = asyncHandler(async (req, res) => {
   // Check if user has access to board
   if (!checkBoardAccess(board, req.user.id)) {
     return sendForbiddenError(res, 'Access denied');
+  }
+
+  // Check if user can edit content (owner, admin, or editor)
+  if (!checkContentAccess(board, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can reorder lists');
   }
 
   // Update positions of other lists
@@ -160,6 +202,11 @@ const deleteList = asyncHandler(async (req, res) => {
   // Check if user has access to board
   if (!checkBoardAccess(board, req.user.id)) {
     return sendForbiddenError(res, 'Access denied');
+  }
+
+  // Check if user can edit content (owner, admin, or editor)
+  if (!checkContentAccess(board, req.user.id)) {
+    return sendForbiddenError(res, 'Only board owners, admins, and editors can delete lists');
   }
 
   // Delete all cards in the list

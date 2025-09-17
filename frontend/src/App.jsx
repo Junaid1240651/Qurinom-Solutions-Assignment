@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { Provider } from 'react-redux';
+import { Toaster } from 'react-hot-toast';
 import { store } from './store';
 import { useDispatch, useSelector } from 'react-redux';
 import { getCurrentUser } from './store/slices/authSlice';
@@ -10,7 +11,7 @@ import ProtectedRoute from './components/ProtectedRoute';
 import LoginForm from './components/auth/LoginForm';
 import RegisterForm from './components/auth/RegisterForm';
 import Dashboard from './components/dashboard/Dashboard';
-import BoardView from './components/board/BoardView';
+import BoardView from './components/board/BoardView.jsx';
 
 // App Routes Component
 const AppRoutes = () => {
@@ -99,6 +100,30 @@ const App = () => {
   return (
     <Provider store={store}>
       <AppRoutes />
+      <Toaster
+        position="top-right"
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: '#edd921',
+            color: '#fff',
+          },
+          success: {
+            duration: 3000,
+            style: {
+              background: '#3df26d',
+              color: '#fff',
+            },
+          },
+          error: {
+            duration: 5000,
+            style: {
+              background: '#ef4444',
+              color: '#fff',
+            },
+          },
+        }}
+      />
     </Provider>
   );
 };

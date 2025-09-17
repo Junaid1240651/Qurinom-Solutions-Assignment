@@ -23,7 +23,7 @@ app.use((req, res, next) => {
 
 // Middleware
 app.use(cors({
-  origin: ['https://qurinom-solutions-assignment.vercel.app','http://localhost:3000'],
+  origin: ['https://qurinom-solutions-assignment.vercel.app','http://localhost:3001'],
   credentials: true,
 }));
 app.use(cookieParser()); // Parse cookies

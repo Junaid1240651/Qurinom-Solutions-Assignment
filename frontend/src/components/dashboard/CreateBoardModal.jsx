@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Image, Palette } from 'lucide-react';
+import { X } from 'lucide-react';
 
 const CreateBoardModal = ({ onClose, onSubmit }) => {
   const [formData, setFormData] = useState({

@@ -13,15 +13,18 @@ import {
   X,
   Edit,
   Trash2,
-  User,
   LogOut,
-  Settings,
-  ChevronDown
+  ChevronDown,
+  MessageCircle
 } from 'lucide-react';
+import { showSuccess, showError } from '../../utils/toast';
 import { fetchBoardDetails, clearCurrentBoard, updateBoard } from '../../store/slices/boardSlice';
-import { createList, fetchListsByBoard, clearLists, updateList, deleteList, moveCardBetweenLists, reorderLists } from '../../store/slices/listSlice';
-import { createCard, clearCards, updateCard, deleteCard, moveCard } from '../../store/slices/cardSlice';
+import { createList, fetchListsByBoard, clearLists, updateList, deleteList, moveCardBetweenLists, reorderLists, reorderList } from '../../store/slices/listSlice';
+import { clearCards, updateCard, deleteCard, moveCard } from '../../store/slices/cardSlice';
 import { DeleteConfirmationModal } from '../common';
+import MemberManagementModal from './MemberManagementModal';
+import CardModal from './CardModal';
+import { boardApi } from '../../services/authApi';
 import './BoardView.css';
 
 const BoardView = () => {
@@ -33,8 +36,24 @@ const BoardView = () => {
   const { currentBoard, loading, error } = useSelector((state) => state.boards);
   const { lists, creating: creatingList } = useSelector((state) => state.lists);
   const { creating: creatingCard } = useSelector((state) => state.cards);
+  const { user: currentUser } = useSelector((state) => state.auth);
+  const { commentsByCard } = useSelector((state) => state.comments);
 
-  const [showBoardMenu, setShowBoardMenu] = useState(false);
+  // Helper function to get the most up-to-date comment count
+  const getCommentCount = useCallback((card) => {
+    const cardId = card?.id || card?._id;
+    if (!cardId) return 0;
+    
+    // Get count from comments store if available, otherwise fall back to card.comments
+    const commentsFromStore = commentsByCard[cardId];
+    if (commentsFromStore && Array.isArray(commentsFromStore)) {
+      return commentsFromStore.length;
+    }
+    
+    // Fall back to card.comments
+    return card?.comments?.length || 0;
+  }, [commentsByCard]);
+
   const [isStarred, setIsStarred] = useState(false);
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -50,7 +69,10 @@ const BoardView = () => {
   const [editCardTitle, setEditCardTitle] = useState('');
   const [showCardMenu, setShowCardMenu] = useState(null);
   const [cardToDelete, setCardToDelete] = useState(null);
+  const [showCardModal, setShowCardModal] = useState(false);
+  const [selectedCard, setSelectedCard] = useState(null);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [showMemberModal, setShowMemberModal] = useState(false);
   const fetchedBoardId = useRef(null);
   const titleInputRef = useRef(null);
   const addListInputRef = useRef(null);
@@ -180,22 +202,128 @@ const BoardView = () => {
     }
   }, [showProfileMenu]);
 
+  // Helper function to get current user's role
+  const getCurrentUserRole = useCallback(() => {
+    if (!currentBoard || !currentUser) return 'viewer';
+
+    const ownerId = currentBoard.owner?.id || currentBoard.owner?._id || currentBoard.owner;
+    const isOwner = currentUser.id.toString() === ownerId.toString();
+
+    if (isOwner) return 'owner';
+
+    const currentUserMember = currentBoard.members?.find(m => {
+      const mId = m.user?.id || m.user?._id || m.user;
+      return mId.toString() === currentUser.id.toString();
+    });
+
+    return currentUserMember?.role || 'viewer';
+  }, [currentBoard, currentUser]);
+
+  // Permission checks
+  const canEditBoard = useCallback(() => {
+    const role = getCurrentUserRole();
+    return role === 'owner' || role === 'admin';
+  }, [getCurrentUserRole]);
+
+  const canCreateContent = useCallback(() => {
+    const role = getCurrentUserRole();
+    return role === 'owner' || role === 'admin' || role === 'editor';
+  }, [getCurrentUserRole]);
+
+  const canEditContent = useCallback(() => {
+    const role = getCurrentUserRole();
+    return role === 'owner' || role === 'admin' || role === 'editor';
+  }, [getCurrentUserRole]);
+
+  // Card Modal handlers
+  const handleCardClick = useCallback((card, listTitle) => {
+    setSelectedCard({ ...card, listTitle });
+    setShowCardModal(true);
+  }, []);
+
+  const handleCloseCardModal = useCallback(() => {
+    setShowCardModal(false);
+    setSelectedCard(null);
+  }, []);
+
   const handleBackToDashboard = useCallback(() => {
     navigate('/dashboard');
   }, [navigate]);
 
-  const handleStarBoard = useCallback(() => {
-    setIsStarred(!isStarred);
-    // TODO: Implement star/unstar API call
-  }, [isStarred]);
+  const handleStarBoard = useCallback(async () => {
+    const newStarredState = !isStarred;
+    setIsStarred(newStarredState);
+
+    try {
+      const boardId = currentBoard.id || currentBoard._id;
+
+      if (!boardId) {
+        setIsStarred(isStarred); // Revert on error
+        return;
+      }
+
+      await dispatch(updateBoard({
+        boardId: boardId,
+        boardData: { isStarred: newStarredState }
+      })).unwrap();
+
+      showSuccess(newStarredState ? 'Board starred!' : 'Board unstarred!');
+    } catch (error) {
+      // Revert the optimistic update on error
+      setIsStarred(isStarred);
+      showError('Failed to update board star status');
+    }
+  }, [dispatch, isStarred, currentBoard]);
 
   const handleInviteMembers = useCallback(() => {
-    // TODO: Implement invite members modal
+    setShowMemberModal(true);
   }, []);
 
-  const handleBoardSettings = useCallback(() => {
-    // TODO: Implement board settings modal
+  const handleCloseMemberModal = useCallback(() => {
+    setShowMemberModal(false);
   }, []);
+
+  const handleInviteMember = useCallback(async (memberData) => {
+    try {
+      const boardId = currentBoard.id || currentBoard._id;
+      await boardApi.addMember(boardId, memberData);
+
+      // Refresh board data to show new member
+      dispatch(fetchBoardDetails(boardId));
+
+      showSuccess(`Invitation sent to ${memberData.email}!`);
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to invite member');
+    }
+  }, [currentBoard, dispatch]);
+
+  const handleRemoveMember = useCallback(async (memberId) => {
+    try {
+      const boardId = currentBoard.id || currentBoard._id;
+      await boardApi.removeMember(boardId, memberId);
+
+      // Refresh board data to show updated members
+      dispatch(fetchBoardDetails(boardId));
+
+      showSuccess('Member removed successfully!');
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to remove member');
+    }
+  }, [currentBoard, dispatch]);
+
+  // Profile menu handlers
+  const handleProfileMenuClick = useCallback(() => {
+    setShowProfileMenu(!showProfileMenu);
+  }, [showProfileMenu]);
+
+  const handleLogout = useCallback(() => {
+    // Clear localStorage
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+
+    // Navigate to login page
+    navigate('/login');
+  }, [navigate]);
 
   const handleStartEditTitle = useCallback(() => {
     setIsEditingTitle(true);
@@ -216,9 +344,12 @@ const BoardView = () => {
           boardId: boardId,
           boardData: { title: editTitle.trim() }
         })).unwrap();
+
+        showSuccess('Board title updated successfully!');
       } catch (error) {
         // Reset to original title on error
         setEditTitle(currentBoard?.title || '');
+        showError('Failed to update board title');
       }
     }
     setIsEditingTitle(false);
@@ -258,8 +389,9 @@ const BoardView = () => {
       })).unwrap();
       setNewListTitle('');
       setShowAddList(false);
+      showSuccess('List created successfully!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to create list');
     }
   }, [dispatch, newListTitle, boardId]);
 
@@ -293,8 +425,9 @@ const BoardView = () => {
       })).unwrap();
       setEditingListId(null);
       setEditListTitle('');
+      showSuccess('List updated successfully!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to update list');
     }
   }, [dispatch, editListTitle, editingListId]);
 
@@ -320,8 +453,9 @@ const BoardView = () => {
     try {
       await dispatch(deleteList(listId)).unwrap();
       setShowDeleteConfirm(null);
+      showSuccess('List deleted successfully!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to delete list');
     }
   }, [dispatch]);
 
@@ -344,17 +478,13 @@ const BoardView = () => {
     if (!newCardTitle.trim() || !showAddCard) return;
 
     try {
-      const result = await dispatch(createCard({
-        title: newCardTitle.trim(),
-        list: showAddCard
-      })).unwrap();
-
       setNewCardTitle('');
       setShowAddCard(null);
+      showSuccess('Card created successfully!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to create card');
     }
-  }, [dispatch, newCardTitle, showAddCard]);
+  }, [newCardTitle, showAddCard]);
 
   const handleAddCardKeyDown = useCallback((e) => {
     if (e.key === 'Enter') {
@@ -388,8 +518,9 @@ const BoardView = () => {
       setEditCardTitle('');
       // Refetch lists to get updated card data
       dispatch(fetchListsByBoard(boardId));
+      showSuccess('Card updated successfully!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to update card');
     }
   }, [dispatch, editCardTitle, editingCardId, boardId]);
 
@@ -417,28 +548,15 @@ const BoardView = () => {
       setCardToDelete(null);
       // Refetch lists to get updated card data
       dispatch(fetchListsByBoard(boardId));
+      showSuccess('Card deleted successfully!');
     } catch (error) {
-      // Error is handled by Redux state
+      showError('Failed to delete card');
     }
   }, [dispatch, boardId]);
 
   const handleCancelCardDelete = useCallback(() => {
     setCardToDelete(null);
   }, []);
-
-  // Profile menu handlers
-  const handleProfileMenuClick = useCallback(() => {
-    setShowProfileMenu(!showProfileMenu);
-  }, [showProfileMenu]);
-
-  const handleLogout = useCallback(() => {
-    // Clear localStorage
-    localStorage.removeItem('token');
-    localStorage.removeItem('user');
-    
-    // Navigate to login page
-    navigate('/login');
-  }, [navigate]);
 
   // Drag and drop handler
   const handleDragEnd = useCallback(async (result) => {
@@ -456,14 +574,30 @@ const BoardView = () => {
 
     // Handle list reordering
     if (type === 'list') {
-
       // Optimistically reorder lists in Redux
       dispatch(reorderLists({
         sourceIndex: source.index,
         destinationIndex: destination.index
       }));
 
-      // TODO: Add API call to persist list order on server
+      try {
+        // Get the dragged list ID and new position
+        const draggedListId = lists[source.index].id || lists[source.index]._id;
+
+        // Persist list order on server using existing reorderList API
+        await dispatch(reorderList({
+          listId: draggedListId,
+          position: destination.index
+        })).unwrap();
+
+        // Refetch lists to get updated positions for all lists
+        dispatch(fetchListsByBoard(boardId));
+        showSuccess('List moved successfully!');
+      } catch (error) {
+        // Revert the optimistic update by refetching
+        dispatch(fetchListsByBoard(boardId));
+        showError('Failed to move list');
+      }
       return;
     }
 
@@ -472,7 +606,7 @@ const BoardView = () => {
     const destinationListId = destination.droppableId.replace('list-', '');
 
     // Optimistically update the UI immediately
-    
+
     dispatch(moveCardBetweenLists({
       cardId: draggableId,
       sourceListId,
@@ -493,9 +627,9 @@ const BoardView = () => {
     } catch (error) {
       // Revert the optimistic update by refetching
       dispatch(fetchListsByBoard(boardId));
-      // Could add a toast notification here for better UX
+      showError('Failed to move card');
     }
-  }, [dispatch, boardId]);
+  }, [dispatch, lists, boardId]);
 
   // Calculate background style (must be before early returns)
   const backgroundStyle = useMemo(() => {
@@ -571,7 +705,7 @@ const BoardView = () => {
     <div className="min-h-screen" style={backgroundStyle}>
       {/* Board Header */}
       <div className="bg-black bg-opacity-20 backdrop-blur-sm border-b border-white border-opacity-20">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between py-4">
             {/* Left Section */}
             <div className="flex items-center space-x-4">
@@ -612,24 +746,26 @@ const BoardView = () => {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-center space-x-2 group cursor-pointer" onClick={handleStartEditTitle}>
+                  <div className={`flex items-center space-x-2 group ${canEditBoard() ? 'cursor-pointer' : ''}`} onClick={canEditBoard() ? handleStartEditTitle : undefined}>
                     <h1 className="text-xl font-bold text-white hover:text-yellow-100 transition-colors">
                       {currentBoard.title}
                     </h1>
-                    <button
-                      className="p-1 text-white opacity-70 group-hover:opacity-100 hover:text-yellow-400 transition-all"
-                      title="Click to edit board title"
-                    >
-                      <Edit2 className="h-4 w-4" />
-                    </button>
+                    {canEditBoard() && (
+                      <button
+                        className="p-1 text-white opacity-70 group-hover:opacity-100 hover:text-yellow-400 transition-all"
+                        title="Click to edit board title"
+                      >
+                        <Edit2 className="h-4 w-4" />
+                      </button>
+                    )}
                   </div>
                 )}
 
                 <button
                   onClick={handleStarBoard}
                   className={`p-1 rounded-md transition-colors ${isStarred
-                      ? 'text-yellow-400 hover:text-yellow-300'
-                      : 'text-white hover:text-yellow-400'
+                    ? 'text-yellow-400 hover:text-yellow-300'
+                    : 'text-white hover:text-yellow-400'
                     }`}
                 >
                   <Star className={`h-5 w-5 ${isStarred ? 'fill-current' : ''}`} />
@@ -657,59 +793,49 @@ const BoardView = () => {
                 )}
               </div>
 
-              {/* Invite Button */}
+              {/* Members Button */}
               <button
                 onClick={handleInviteMembers}
                 className="flex items-center gap-2 bg-white bg-opacity-20 text-white px-3 py-2 rounded-lg hover:bg-opacity-30 transition-colors text-sm"
+                title="Manage board members"
               >
                 <Users className="h-4 w-4" />
-                <span className="hidden sm:inline">Invite</span>
+                <span className="hidden sm:inline">Members</span>
               </button>
 
-              {/* User Profile */}
-              {currentBoard.members?.slice(0, 1).map((member, index) => (
-                <div key={member.user?.id || index} className="relative profile-menu-container">
-                  <button
-                    onClick={handleProfileMenuClick}
-                    className="flex items-center space-x-2 p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
-                  >
-                    <div className="h-8 w-8 bg-white rounded-full flex items-center justify-center text-sm font-medium text-accent-900">
-                      {member.user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                    </div>
-                    <span className="text-sm font-medium text-white">{member.user?.name || 'User'}</span>
-                    <ChevronDown className="h-4 w-4 text-white" />
-                  </button>
-                  
-                  {showProfileMenu && (
-                    <div className="absolute right-0 top-10 w-48 bg-white rounded-lg shadow-xl border border-accent-200 py-2 z-[9999]" style={{ backdropFilter: 'none' }}>
-                      <div className="px-4 py-2 border-b border-accent-100">
-                        <p className="text-sm font-medium text-accent-900">{member.user?.name || 'User'}</p>
-                        <p className="text-xs text-accent-600">{member.user?.email || 'user@example.com'}</p>
+              {/* User Profile - Only visible to board owner */}
+              {currentBoard.owner && currentUser &&
+                (currentBoard.owner.id || currentBoard.owner._id || currentBoard.owner).toString() === currentUser.id.toString() && (
+                  <div className="relative profile-menu-container">
+                    <button
+                      onClick={handleProfileMenuClick}
+                      className="flex items-center space-x-2 p-2 text-white hover:bg-white hover:bg-opacity-20 rounded-lg transition-colors"
+                    >
+                      <div className="h-8 w-8 bg-white rounded-full flex items-center justify-center text-sm font-medium text-accent-900">
+                        {currentUser.name?.charAt(0)?.toUpperCase() || 'U'}
                       </div>
-                      
-                      <button className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2">
-                        <User className="h-4 w-4" />
-                        <span>Profile</span>
-                      </button>
-                      
-                      <button className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2">
-                        <Settings className="h-4 w-4" />
-                        <span>Settings</span>
-                      </button>
-                      
-                      <div className="border-t border-accent-100 mt-2 pt-2">
+                      <span className="text-sm font-medium text-white">{currentUser.name || 'User'}</span>
+                      <ChevronDown className="h-4 w-4 text-white" />
+                    </button>
+
+                    {showProfileMenu && (
+                      <div className="absolute right-0 top-10 w-48 bg-white rounded-lg shadow-xl border border-accent-200 py-2 z-[9999]" style={{ backdropFilter: 'none' }}>
+                        <div className="px-4 py-2 border-b border-accent-100">
+                          <p className="text-sm font-medium text-accent-900">{currentUser.name || 'User'}</p>
+                          <p className="text-xs text-accent-600">{currentUser.email || 'user@example.com'}</p>
+                        </div>
+
                         <button
                           onClick={handleLogout}
-                          className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                          className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2 mt-2"
                         >
                           <LogOut className="h-4 w-4" />
                           <span>Sign out</span>
                         </button>
                       </div>
-                    </div>
-                  )}
-                </div>
-              ))}
+                    )}
+                  </div>
+                )}
             </div>
           </div>
         </div>
@@ -728,48 +854,50 @@ const BoardView = () => {
           {/* Lists Container with Drag & Drop */}
           <DragDropContext onDragEnd={handleDragEnd}>
             <div className="flex flex-wrap gap-4 pb-4">
-              {/* Add List Section - Always First (Non-draggable) */}
-              <div className="flex-shrink-0 w-72 min-w-[18rem]">
-                {showAddList ? (
-                  <div className="bg-white bg-opacity-95 rounded-xl p-4 shadow-lg border border-white border-opacity-20">
-                    <input
-                      ref={addListInputRef}
-                      type="text"
-                      value={newListTitle}
-                      onChange={(e) => setNewListTitle(e.target.value)}
-                      onKeyDown={handleAddListKeyDown}
-                      placeholder="Enter list title..."
-                      className="w-full px-3 py-2 border border-primary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-accent-900 font-semibold mb-3"
-                      maxLength={100}
-                    />
-                    <div className="flex space-x-2">
-                      <button
-                        onClick={handleCreateList}
-                        disabled={!newListTitle.trim() || creatingList}
-                        className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
-                      >
-                        {creatingList ? 'Adding...' : 'Add List'}
-                      </button>
-                      <button
-                        onClick={handleHideAddList}
-                        className="px-4 py-2 text-accent-600 hover:text-accent-800 transition-colors text-sm"
-                      >
-                        Cancel
-                      </button>
+              {/* Add List Section - Only for users who can create content */}
+              {canCreateContent() && (
+                <div className="flex-shrink-0 w-72 min-w-[18rem] order-first">
+                  {showAddList ? (
+                    <div className="bg-white bg-opacity-95 rounded-xl p-4 shadow-lg border border-white border-opacity-20">
+                      <input
+                        ref={addListInputRef}
+                        type="text"
+                        value={newListTitle}
+                        onChange={(e) => setNewListTitle(e.target.value)}
+                        onKeyDown={handleAddListKeyDown}
+                        placeholder="Enter list title..."
+                        className="w-full px-3 py-2 border border-primary-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 text-accent-900 font-semibold mb-3"
+                        maxLength={100}
+                      />
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={handleCreateList}
+                          disabled={!newListTitle.trim() || creatingList}
+                          className="flex-1 bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm font-medium"
+                        >
+                          {creatingList ? 'Adding...' : 'Add List'}
+                        </button>
+                        <button
+                          onClick={handleHideAddList}
+                          className="px-4 py-2 text-accent-600 hover:text-accent-800 transition-colors text-sm"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ) : (
-                  <button
-                    onClick={handleShowAddList}
-                    className="w-full bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-xl p-4 transition-all duration-200 border-2 border-dashed border-white border-opacity-30 hover:border-opacity-50"
-                  >
-                    <div className="flex items-center justify-center space-x-2">
-                      <Plus className="h-5 w-5" />
-                      <span className="font-medium">Add a list</span>
-                    </div>
-                  </button>
-                )}
-              </div>
+                  ) : (
+                    <button
+                      onClick={handleShowAddList}
+                      className="w-full bg-white bg-opacity-20 hover:bg-opacity-30 text-white rounded-xl p-4 transition-all duration-200 border-2 border-dashed border-white border-opacity-30 hover:border-opacity-50"
+                    >
+                      <div className="flex items-center justify-center space-x-2">
+                        <Plus className="h-5 w-5" />
+                        <span className="font-medium">Add a list</span>
+                      </div>
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Draggable Lists Container */}
               <Droppable droppableId="lists" type="list" direction="horizontal">
@@ -791,263 +919,283 @@ const BoardView = () => {
                           <div
                             ref={provided.innerRef}
                             {...provided.draggableProps}
-                            className={`flex-shrink-0 w-72 min-w-[18rem] bg-white bg-opacity-95 rounded-xl p-4 shadow-lg border border-white border-opacity-20 h-fit ${
-                              snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl' : ''
-                            }`}
+                            className={`flex-shrink-0 w-72 min-w-[18rem] bg-white bg-opacity-95 rounded-xl p-4 shadow-lg border border-white border-opacity-20 h-fit ${snapshot.isDragging ? 'rotate-2 scale-105 shadow-xl' : ''
+                              }`}
                             style={provided.draggableProps.style}
                           >
-                            {/* List Header - Drag Handle */}
-                            <div {...provided.dragHandleProps} className="flex items-center justify-between mb-3 cursor-grab active:cursor-grabbing">
-                    {editingListId === (list.id || list._id) ? (
-                      <div className="flex items-center space-x-2 flex-1">
-                        <input
-                          ref={editListInputRef}
-                          type="text"
-                          value={editListTitle}
-                          onChange={(e) => setEditListTitle(e.target.value)}
-                          onKeyDown={handleEditListKeyDown}
-                          onBlur={handleSaveListEdit}
-                          className="flex-1 px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 text-accent-900 font-semibold"
-                          maxLength={100}
-                        />
-                        <button
-                          onClick={handleSaveListEdit}
-                          className="p-1 text-green-600 hover:text-green-700 transition-colors"
-                          title="Save"
-                        >
-                          <Check className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={handleCancelListEdit}
-                          className="p-1 text-red-600 hover:text-red-700 transition-colors"
-                          title="Cancel"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    ) : (
-                      <>
-                        <h3 className="font-semibold text-accent-900 truncate flex-1 min-w-0" title={list.title}>
-                          {list.title}
-                        </h3>
-                        <div className="relative list-menu-container flex-shrink-0">
-                          <button
-                            onClick={(e) => handleListMenuClick(list.id || list._id, e)}
-                            className="p-1 text-accent-400 hover:text-accent-600 rounded"
-                          >
-                            <MoreHorizontal className="h-4 w-4" />
-                          </button>
+                            {/* List Header - Drag Handle (only for users who can edit) */}
+                            <div {...(canEditContent() ? provided.dragHandleProps : {})} className={`flex items-center justify-between mb-3 ${canEditContent() ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+                              {editingListId === (list.id || list._id) ? (
+                                <div className="flex items-center space-x-2 flex-1">
+                                  <input
+                                    ref={editListInputRef}
+                                    type="text"
+                                    value={editListTitle}
+                                    onChange={(e) => setEditListTitle(e.target.value)}
+                                    onKeyDown={handleEditListKeyDown}
+                                    onBlur={handleSaveListEdit}
+                                    className="flex-1 px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 text-accent-900 font-semibold"
+                                    maxLength={100}
+                                  />
+                                  <button
+                                    onClick={handleSaveListEdit}
+                                    className="p-1 text-green-600 hover:text-green-700 transition-colors"
+                                    title="Save"
+                                  >
+                                    <Check className="h-4 w-4" />
+                                  </button>
+                                  <button
+                                    onClick={handleCancelListEdit}
+                                    className="p-1 text-red-600 hover:text-red-700 transition-colors"
+                                    title="Cancel"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <>
+                                  <h3 className="font-semibold text-accent-900 truncate flex-1 min-w-0" title={list.title}>
+                                    {list.title}
+                                  </h3>
+                                  {canEditContent() && (
+                                    <div className="relative list-menu-container flex-shrink-0">
+                                      <button
+                                        onClick={(e) => handleListMenuClick(list.id || list._id, e)}
+                                        className="p-1 text-accent-400 hover:text-accent-600 rounded"
+                                      >
+                                        <MoreHorizontal className="h-4 w-4" />
+                                      </button>
 
-                          {showListMenu === (list.id || list._id) && (
-                            <div className="absolute right-0 top-8 w-40 bg-white rounded-lg shadow-lg border border-accent-200 py-2 z-50">
-                              <button
-                                onClick={() => handleStartEditList(list)}
-                                className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2"
-                              >
-                                <Edit className="h-4 w-4" />
-                                <span>Rename List</span>
-                              </button>
-                              <button
-                                onClick={() => handleShowDeleteConfirm(list.id || list._id)}
-                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                              >
-                                <Trash2 className="h-4 w-4" />
-                                <span>Delete List</span>
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      </>
-                    )}
-                            </div>
-
-                  {/* Cards - Each list is a Droppable containing multiple Draggable cards */}
-                  <Droppable droppableId={`list-${(list.id || list._id).toString()}`}>
-                    {(provided, snapshot) => (
-                      <div
-                        {...provided.droppableProps}
-                        ref={provided.innerRef}
-                        className={`space-y-2 mb-3 min-h-[70px] ${
-                          snapshot.isDraggingOver 
-                            ? 'bg-blue-50 bg-opacity-50 rounded-lg p-1' 
-                            : (!list.cards || list.cards.length === 0) 
-                              ? 'border-2 border-dashed border-white border-opacity-20 rounded-lg p-2' 
-                              : ''
-                        }`}
-                      >
-                        {list.cards && list.cards.length > 0 ?
-                          [...list.cards]
-                            .sort((a, b) => (a.position || 0) - (b.position || 0))
-                            .map((card, index) => {
-                              const cardId = card?.id || card?._id;
-
-                              // Skip cards without valid IDs
-                              if (!cardId) return null;
-
-                              return (
-                                <Draggable
-                                  key={cardId.toString()}
-                                  draggableId={cardId.toString()}
-                                  index={index}
-                                >
-                                  {(provided, snapshot) => (
-                                    <div
-                                      ref={provided.innerRef}
-                                      {...provided.draggableProps}
-                                      {...provided.dragHandleProps}
-                                      className="group bg-white rounded-lg p-3 shadow-sm border border-accent-200 hover:shadow-md transition-shadow cursor-grab active:cursor-grabbing"
-                                      style={provided.draggableProps.style}
-                                    >
-                                      {editingCardId === cardId ? (
-                                        // Edit card form
-                                        <div className="space-y-2">
-                                          <input
-                                            ref={editCardInputRef}
-                                            type="text"
-                                            value={editCardTitle}
-                                            onChange={(e) => setEditCardTitle(e.target.value)}
-                                            onKeyDown={handleEditCardKeyDown}
-                                            onBlur={handleSaveCardEdit}
-                                            className="w-full px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 text-accent-900 font-medium"
-                                            maxLength={500}
-                                          />
-                                          <div className="flex space-x-2">
-                                            <button
-                                              onClick={handleSaveCardEdit}
-                                              className="p-1 text-green-600 hover:text-green-700 transition-colors"
-                                              title="Save"
-                                            >
-                                              <Check className="h-4 w-4" />
-                                            </button>
-                                            <button
-                                              onClick={handleCancelCardEdit}
-                                              className="p-1 text-red-600 hover:text-red-700 transition-colors"
-                                              title="Cancel"
-                                            >
-                                              <X className="h-4 w-4" />
-                                            </button>
-                                          </div>
+                                      {showListMenu === (list.id || list._id) && (
+                                        <div className="absolute right-0 top-8 w-40 bg-white rounded-lg shadow-lg border border-accent-200 py-2 z-50">
+                                          <button
+                                            onClick={() => handleStartEditList(list)}
+                                            className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2"
+                                          >
+                                            <Edit className="h-4 w-4" />
+                                            <span>Rename List</span>
+                                          </button>
+                                          <button
+                                            onClick={() => handleShowDeleteConfirm(list.id || list._id)}
+                                            className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                                          >
+                                            <Trash2 className="h-4 w-4" />
+                                            <span>Delete List</span>
+                                          </button>
                                         </div>
-                                      ) : (
-                                        // Display card
-                                        <>
-                                          <div className="flex items-start justify-between mb-2">
-                                            <h4 className="font-medium text-accent-900 break-words flex-1" title={card.title}>
-                                              {card.title}
-                                            </h4>
-                                            <div className="relative card-menu-container flex-shrink-0 ml-2">
-                                              <button
-                                                onClick={(e) => handleCardMenuClick(cardId, e)}
-                                                className="p-1 text-accent-400 hover:text-accent-600 rounded transition-colors"
-                                              >
-                                                <MoreHorizontal className="h-4 w-4" />
-                                              </button>
-
-                                              {showCardMenu === cardId && (
-                                                <div className="absolute right-0 top-8 w-40 bg-white rounded-lg shadow-lg border border-accent-200 py-2 z-50">
-                                                  <button
-                                                    onClick={() => handleStartEditCard(card)}
-                                                    className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2"
-                                                  >
-                                                    <Edit className="h-4 w-4" />
-                                                    <span>Edit Card</span>
-                                                  </button>
-                                                  <button
-                                                    onClick={() => handleShowCardDeleteConfirm(card)}
-                                                    className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
-                                                  >
-                                                    <Trash2 className="h-4 w-4" />
-                                                    <span>Delete Card</span>
-                                                  </button>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-
-                                          {card?.description && card.description.trim() && (
-                                            <p className="text-sm text-accent-600 mb-2 line-clamp-2">
-                                              {card.description}
-                                            </p>
-                                          )}
-
-                                          {/* Card Meta */}
-                                          <div className="flex items-center justify-between text-xs text-accent-500">
-                                            {card?.dueDate && (
-                                              <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
-                                                Due {new Date(card.dueDate).toLocaleDateString()}
-                                              </span>
-                                            )}
-                                            {card?.members?.length > 0 && (
-                                              <div className="flex -space-x-1">
-                                                {card.members.slice(0, 3).map((member, index) => (
-                                                  <div
-                                                    key={member?.id || member?._id || index}
-                                                    className="h-6 w-6 bg-primary-600 rounded-full flex items-center justify-center text-white text-xs border-2 border-white"
-                                                    title={member?.name || 'Unknown User'}
-                                                  >
-                                                    {member?.name?.charAt(0)?.toUpperCase() || 'U'}
-                                                  </div>
-                                                ))}
-                                              </div>
-                                            )}
-                                          </div>
-                                        </>
                                       )}
                                     </div>
                                   )}
-                                </Draggable>
-                              );
-                            })
-                          : (
-                            // Empty list placeholder
-                            <div className="flex items-center justify-center h-16 text-accent-500 text-sm font-medium">
-                              Drop cards here
+                                </>
+                              )}
                             </div>
-                          )
-                        }
-                        {provided.placeholder}
-                      </div>
-                    )}
-                  </Droppable>
 
-                  {/* Add Card Button/Form */}
-                  {showAddCard === (list.id || list._id) ? (
-                    <div className="space-y-2">
-                      <textarea
-                        ref={addCardInputRef}
-                        value={newCardTitle}
-                        onChange={(e) => setNewCardTitle(e.target.value)}
-                        onKeyDown={handleAddCardKeyDown}
-                        placeholder="Enter a title for this card..."
-                        className="w-full px-3 py-2 border border-accent-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-accent-900 resize-none"
-                        rows={3}
-                        maxLength={500}
-                      />
-                      <div className="flex space-x-2">
-                        <button
-                          onClick={handleCreateCard}
-                          disabled={!newCardTitle.trim() || creatingCard}
-                          className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
-                        >
-                          {creatingCard ? 'Adding...' : 'Add Card'}
-                        </button>
-                        <button
-                          onClick={handleHideAddCard}
-                          className="px-3 py-2 text-accent-600 hover:text-accent-900 hover:bg-accent-100 rounded-lg transition-colors"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() => handleShowAddCard(list.id || list._id)}
-                      className="w-full flex items-center gap-2 text-accent-600 hover:text-accent-900 hover:bg-accent-100 p-2 rounded-lg transition-colors text-sm"
-                    >
-                      <Plus className="h-4 w-4" />
-                      Add a card
-                    </button>
-                  )}
+                            {/* Cards - Each list is a Droppable containing multiple Draggable cards */}
+                            <Droppable droppableId={`list-${(list.id || list._id).toString()}`}>
+                              {(provided, snapshot) => (
+                                <div
+                                  {...provided.droppableProps}
+                                  ref={provided.innerRef}
+                                  className={`space-y-2 mb-3 min-h-[70px] ${snapshot.isDraggingOver
+                                    ? 'bg-blue-50 bg-opacity-50 rounded-lg p-1'
+                                    : (!list.cards || list.cards.length === 0)
+                                      ? 'border-2 border-dashed border-white border-opacity-20 rounded-lg p-2'
+                                      : ''
+                                    }`}
+                                >
+                                  {list.cards && list.cards.length > 0 ?
+                                    [...list.cards]
+                                      .sort((a, b) => (a.position || 0) - (b.position || 0))
+                                      .map((card, index) => {
+                                        const cardId = card?.id || card?._id;
+
+                                        // Skip cards without valid IDs
+                                        if (!cardId) return null;
+
+                                        return (
+                                          <Draggable
+                                            key={cardId.toString()}
+                                            draggableId={cardId.toString()}
+                                            index={index}
+                                          >
+                                            {(provided, snapshot) => (
+                                              <div
+                                                ref={provided.innerRef}
+                                                {...provided.draggableProps}
+                                                {...(canEditContent() ? provided.dragHandleProps : {})}
+                                                className={`group bg-white rounded-lg p-3 shadow-sm border border-accent-200 hover:shadow-md transition-shadow ${canEditContent() ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                                                style={provided.draggableProps.style}
+                                              >
+                                                {editingCardId === cardId ? (
+                                                  // Edit card form
+                                                  <div className="space-y-2">
+                                                    <input
+                                                      ref={editCardInputRef}
+                                                      type="text"
+                                                      value={editCardTitle}
+                                                      onChange={(e) => setEditCardTitle(e.target.value)}
+                                                      onKeyDown={handleEditCardKeyDown}
+                                                      onBlur={handleSaveCardEdit}
+                                                      className="w-full px-2 py-1 border border-primary-300 rounded focus:outline-none focus:ring-2 focus:ring-primary-500 text-accent-900 font-medium"
+                                                      maxLength={500}
+                                                    />
+                                                    <div className="flex space-x-2">
+                                                      <button
+                                                        onClick={handleSaveCardEdit}
+                                                        className="p-1 text-green-600 hover:text-green-700 transition-colors"
+                                                        title="Save"
+                                                      >
+                                                        <Check className="h-4 w-4" />
+                                                      </button>
+                                                      <button
+                                                        onClick={handleCancelCardEdit}
+                                                        className="p-1 text-red-600 hover:text-red-700 transition-colors"
+                                                        title="Cancel"
+                                                      >
+                                                        <X className="h-4 w-4" />
+                                                      </button>
+                                                    </div>
+                                                  </div>
+                                                ) : (
+                                                  // Display card
+                                                  <div>
+                                                    <div className="flex items-start justify-between mb-2">
+                                                      <h4 className="font-medium text-accent-900 break-words flex-1" title={card.title}>
+                                                        {card.title}
+                                                      </h4>
+                                                      {canEditContent() && (
+                                                        <div className="relative card-menu-container flex-shrink-0 ml-2">
+                                                          <button
+                                                            onClick={(e) => {
+                                                              e.stopPropagation();
+                                                              handleCardMenuClick(cardId, e);
+                                                            }}
+                                                            className="p-1 text-accent-700 bg-accent-50 hover:text-accent-900 hover:bg-accent-100 rounded transition-colors border border-accent-300 shadow-sm"
+                                                          >
+                                                            <MoreHorizontal className="h-4 w-4" />
+                                                          </button>
+
+                                                          {showCardMenu === cardId && (
+                                                            <div className="absolute right-0 top-8 w-40 bg-white rounded-lg shadow-lg border border-accent-200 py-2 z-50">
+                                                              <button
+                                                                onClick={() => handleStartEditCard(card)}
+                                                                className="w-full px-4 py-2 text-left text-sm text-accent-700 hover:bg-accent-100 flex items-center space-x-2"
+                                                              >
+                                                                <Edit className="h-4 w-4" />
+                                                                <span>Edit Card</span>
+                                                              </button>
+                                                              <button
+                                                                onClick={() => handleShowCardDeleteConfirm(card)}
+                                                                className="w-full px-4 py-2 text-left text-sm text-red-600 hover:bg-red-50 flex items-center space-x-2"
+                                                              >
+                                                                <Trash2 className="h-4 w-4" />
+                                                                <span>Delete Card</span>
+                                                              </button>
+                                                            </div>
+                                                          )}
+                                                        </div>
+                                                      )}
+                                                    </div>
+
+                                                    {/* Comment Icon - positioned below 3-dot menu */}
+                                                    <div className="flex justify-end mb-2">
+                                                      <button
+                                                        onClick={(e) => {
+                                                          e.stopPropagation();
+                                                          handleCardClick(card, list.title);
+                                                        }}
+                                                        className="flex items-center gap-1 text-gray-500 hover:text-blue-600 transition-colors cursor-pointer p-1 rounded hover:bg-gray-100"
+                                                        title="View comments"
+                                                      >
+                                                        <MessageCircle className="h-4 w-4" />
+                                                        <span className="text-xs font-medium">{getCommentCount(card)}</span>
+                                                      </button>
+                                                    </div>
+
+                                                    {card?.description && card.description.trim() && (
+                                                      <p className="text-sm text-accent-600 mb-2 line-clamp-2">
+                                                        {card.description}
+                                                      </p>
+                                                    )}
+
+                                                    {/* Card Meta */}
+                                                    <div className="flex items-center justify-between text-xs text-accent-500">
+                                                      {card?.dueDate && (
+                                                        <span className="bg-yellow-100 text-yellow-800 px-2 py-1 rounded">
+                                                          Due {new Date(card.dueDate).toLocaleDateString()}
+                                                        </span>
+                                                      )}
+                                                      {card?.members?.length > 0 && (
+                                                        <div className="flex -space-x-1">
+                                                          {card.members.slice(0, 3).map((member, index) => (
+                                                            <div
+                                                              key={member?.id || member?._id || index}
+                                                              className="h-6 w-6 bg-primary-600 rounded-full flex items-center justify-center text-white text-xs border-2 border-white"
+                                                              title={member?.name || 'Unknown User'}
+                                                            >
+                                                              {member?.name?.charAt(0)?.toUpperCase() || 'U'}
+                                                            </div>
+                                                          ))}
+                                                        </div>
+                                                      )}
+                                                    </div>
+                                                  </div>
+                                                )}
+                                              </div>
+                                            )}
+                                          </Draggable>
+                                        );
+                                      })
+                                    : (
+                                      // Empty list placeholder
+                                      <div className="flex items-center justify-center h-16 text-accent-500 text-sm font-medium">
+                                        Drop cards here
+                                      </div>
+                                    )
+                                  }
+                                  {provided.placeholder}
+                                </div>
+                              )}
+                            </Droppable>
+
+                            {/* Add Card Button/Form - Only for users who can create content */}
+                            {canCreateContent() && showAddCard === (list.id || list._id) ? (
+                              <div className="space-y-2">
+                                <textarea
+                                  ref={addCardInputRef}
+                                  value={newCardTitle}
+                                  onChange={(e) => setNewCardTitle(e.target.value)}
+                                  onKeyDown={handleAddCardKeyDown}
+                                  placeholder="Enter a title for this card..."
+                                  className="w-full px-3 py-2 border border-accent-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent text-accent-900 resize-none"
+                                  rows={3}
+                                  maxLength={500}
+                                />
+                                <div className="flex space-x-2">
+                                  <button
+                                    onClick={handleCreateCard}
+                                    disabled={!newCardTitle.trim() || creatingCard}
+                                    className="bg-primary-600 text-white px-4 py-2 rounded-lg hover:bg-primary-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                                  >
+                                    {creatingCard ? 'Adding...' : 'Add Card'}
+                                  </button>
+                                  <button
+                                    onClick={handleHideAddCard}
+                                    className="px-3 py-2 text-accent-600 hover:text-accent-900 hover:bg-accent-100 rounded-lg transition-colors"
+                                  >
+                                    <X className="h-4 w-4" />
+                                  </button>
+                                </div>
+                              </div>
+                            ) : canCreateContent() ? (
+                              <button
+                                onClick={() => handleShowAddCard(list.id || list._id)}
+                                className="w-full flex items-center gap-2 text-accent-600 hover:text-accent-900 hover:bg-accent-100 p-2 rounded-lg transition-colors text-sm"
+                              >
+                                <Plus className="h-4 w-4" />
+                                Add a card
+                              </button>
+                            ) : null}
                           </div>
                         )}
                       </Draggable>
@@ -1081,6 +1229,27 @@ const BoardView = () => {
             title="Delete Card"
             itemName={cardToDelete.title}
             itemType="card"
+          />
+        )}
+
+        {/* Member Management Modal */}
+        {showMemberModal && (
+          <MemberManagementModal
+            onClose={handleCloseMemberModal}
+            onInviteMember={handleInviteMember}
+            onRemoveMember={handleRemoveMember}
+            board={currentBoard}
+            currentUserId={currentUser?.id}
+          />
+        )}
+
+        {/* Card Modal */}
+        {showCardModal && selectedCard && (
+          <CardModal
+            card={selectedCard}
+            listTitle={selectedCard.listTitle}
+            onClose={handleCloseCardModal}
+            canEdit={canEditContent()}
           />
         )}
       </div>
