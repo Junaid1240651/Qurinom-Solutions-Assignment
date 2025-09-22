@@ -236,6 +236,16 @@ const BoardView = () => {
     return role === 'owner' || role === 'admin' || role === 'editor';
   }, [getCurrentUserRole]);
 
+  // Non-owner members (invited members only) for header display
+  const nonOwnerMembers = useMemo(() => {
+    if (!currentBoard || !currentBoard.members) return [];
+    const ownerId = (currentBoard.owner?.id || currentBoard.owner?._id || currentBoard.owner || '').toString();
+    return currentBoard.members.filter(m => {
+      const mId = (m.user?.id || m.user?._id || m.user || '').toString();
+      return mId && ownerId && mId !== ownerId; // exclude owner
+    });
+  }, [currentBoard]);
+
   // Search & filtering logic
   const normalizedSearch = searchQuery.trim().toLowerCase();
   const isSearching = normalizedSearch.length > 0;
@@ -850,22 +860,24 @@ const BoardView = () => {
                 </div>
               </div>
               {/* Other Board Members (non-clickable) */}
-              <div className="flex items-center space-x-2">
-                {currentBoard.members?.slice(1, 3).map((member, index) => (
-                  <div
-                    key={member.user?.id || index}
-                    className="h-8 w-8 bg-white rounded-full flex items-center justify-center text-sm font-medium text-accent-900"
-                    title={member.user?.name}
-                  >
-                    {member.user?.name?.charAt(0)?.toUpperCase() || 'U'}
-                  </div>
-                ))}
-                {currentBoard.members?.length > 3 && (
-                  <div className="h-8 w-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center text-xs font-medium text-accent-700">
-                    +{currentBoard.members.length - 3}
-                  </div>
-                )}
-              </div>
+              {nonOwnerMembers.length > 0 && (
+                <div className="flex items-center space-x-2">
+                  {nonOwnerMembers.slice(0, 2).map((member, index) => (
+                    <div
+                      key={member.user?.id || index}
+                      className="h-8 w-8 bg-white rounded-full flex items-center justify-center text-sm font-medium text-accent-900"
+                      title={member.user?.name}
+                    >
+                      {member.user?.name?.charAt(0)?.toUpperCase() || 'U'}
+                    </div>
+                  ))}
+                  {nonOwnerMembers.length > 2 && (
+                    <div className="h-8 w-8 bg-white bg-opacity-80 rounded-full flex items-center justify-center text-xs font-medium text-accent-700">
+                      +{nonOwnerMembers.length - 2}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Members Button */}
               <button

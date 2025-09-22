@@ -85,6 +85,11 @@ const createBoardValidation = [
     .optional()
     .isBoolean()
     .withMessage('isStarred must be a boolean value')
+  ,
+  body('isPrivate')
+    .optional()
+    .isBoolean()
+    .withMessage('isPrivate must be a boolean value')
 ];
 
 const updateBoardValidation = [
@@ -122,6 +127,11 @@ const updateBoardValidation = [
     .optional()
     .isBoolean()
     .withMessage('isStarred must be a boolean value')
+  ,
+  body('isPrivate')
+    .optional()
+    .isBoolean()
+    .withMessage('isPrivate must be a boolean value')
 ];
 
 const addMemberValidation = [

@@ -7,6 +7,7 @@ import { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendFor
 
 // Helper function to check board access
 const checkBoardAccess = (board, userId) => {
+  if (board.isPrivate === false) return true; // Team visibility
   return board.owner.toString() === userId || 
     board.members.some(member => member.user.toString() === userId);
 };
@@ -34,6 +35,7 @@ const checkAdminAccess = (board, userId) => {
 
 // Helper function to check content creation/editing access (owner, admin, or editor)
 const checkContentAccess = (board, userId) => {
+  if (board.isPrivate === false) return true; // Team boards allow edits
   const role = getUserRole(board, userId);
   return role === 'owner' || role === 'admin' || role === 'editor';
 };

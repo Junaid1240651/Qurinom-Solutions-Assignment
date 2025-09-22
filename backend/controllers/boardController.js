@@ -6,8 +6,10 @@ import User from '../models/User.js';
 import { asyncHandler } from '../middleware/errorHandler.js';
 import { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendForbiddenError } from '../utils/response.js';
 
-// Helper function to check board access
+// Helper function to check board access (Team boards are visible to all authenticated users)
 const checkBoardAccess = (board, userId) => {
+  if (board.isPrivate === false) return true; // Team visibility
+
   // Handle both populated and non-populated owner field
   const ownerId = board.owner._id ? board.owner._id.toString() : board.owner.toString();
 
@@ -41,8 +43,10 @@ const checkAdminAccess = (board, userId) => {
   return role === 'owner' || role === 'admin';
 };
 
-// Helper function to check content creation/editing access (owner, admin, or editor)
+// Helper function to check content creation/editing access
+// Team boards (isPrivate === false) allow any authenticated user to edit content
 const checkContentAccess = (board, userId) => {
+  if (board.isPrivate === false) return true;
   const role = getUserRole(board, userId);
   return role === 'owner' || role === 'admin' || role === 'editor';
 };
@@ -51,7 +55,8 @@ const getAllBoards = asyncHandler(async (req, res) => {
   const boards = await Board.find({
     $or: [
       { owner: req.user.id },
-      { 'members.user': req.user.id }
+      { 'members.user': req.user.id },
+      { isPrivate: false }
     ]
   })
     .populate('owner', 'name email avatar')
@@ -97,12 +102,13 @@ const createBoard = asyncHandler(async (req, res) => {
     return sendValidationError(res, errors.array());
   }
 
-  const { title, description, background } = req.body;
+  const { title, description, background, isPrivate } = req.body;
 
   const board = await Board.create({
     title,
     description,
-    background: background || '#0079bf',
+  background: background || '#0079bf',
+  isPrivate: typeof isPrivate === 'boolean' ? isPrivate : false,
     owner: req.user.id,
     members: [{
       user: req.user.id,

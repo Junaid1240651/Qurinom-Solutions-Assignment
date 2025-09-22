@@ -8,6 +8,7 @@ import { sendSuccess, sendError, sendValidationError, sendNotFoundError, sendFor
 
 // Helper function to check board access
 const checkBoardAccess = (board, userId) => {
+  if (board.isPrivate === false) return true; // Team visibility
   return board.owner.toString() === userId ||
     board.members.some(member => member.user.toString() === userId);
 };
@@ -35,6 +36,7 @@ const checkAdminAccess = (board, userId) => {
 
 // Helper function to check content creation/editing access (owner, admin, or editor)
 const checkContentAccess = (board, userId) => {
+  if (board.isPrivate === false) return true; // Team boards allow edits
   const role = getUserRole(board, userId);
   return role === 'owner' || role === 'admin' || role === 'editor';
 };
@@ -323,9 +325,10 @@ const getComments = asyncHandler(async (req, res) => {
   }
 
   // Check if user has access to this board
+  // Team boards are visible to any authenticated user
   const userRole = getUserRole(card.board, req.user.id);
-  if (!userRole) {
-    return sendUnauthorizedError(res, 'Access denied to this board');
+  if (!userRole && card.board.isPrivate !== false) {
+    return sendForbiddenError(res, 'Access denied to this board');
   }
 
   // Sort comments by creation date (newest first)

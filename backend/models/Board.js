@@ -40,6 +40,11 @@ const boardSchema = new mongoose.Schema({
     type: String,
     default: '#0079bf'
   },
+  // Visibility: if true, only owner and invited members can access; if false (Team), all authenticated users can see (and may edit based on controllers)
+  isPrivate: {
+    type: Boolean,
+    default: false
+  },
   isArchived: {
     type: Boolean,
     default: false
